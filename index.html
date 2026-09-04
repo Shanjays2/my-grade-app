@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
+    .card { background: white; padding: 20px; border-radius: 8px; max-width: 420px; margin: 0 auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    input, button { width: 100%; margin: 8px 0; padding: 10px; box-sizing: border-box; font-size: 14px; }
+    button { background: #007bff; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+    button:disabled { background: #99c2ff; cursor: not-allowed; }
+    .course { border-bottom: 1px solid #eee; padding: 10px 0; }
+    .course-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .course-name { font-size: 14px; }
+    .course-grade { font-weight: bold; white-space: nowrap; }
+    .course-updated { font-size: 11px; color: #888; margin-top: 2px; }
+    .grade-high { color: #1a7f37; }
+    .grade-mid { color: #b58900; }
+    .grade-low { color: #d1242f; }
+    .grade-na { color: #999; }
+    .status { text-align: center; margin: 10px 0; color: #555; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>HAC Grade Viewer</h2>
+    <input type="text" id="user" placeholder="HAC Username">
+    <input type="password" id="pass" placeholder="HAC Password">
+    <button id="loadBtn" onclick="fetchGrades()">Load Grades</button>
+    <div id="output"></div>
+  </div>
+
+  <script>
+    function gradeClass(gradeStr) {
+      if (!gradeStr) return 'grade-na';
+      const num = parseFloat(gradeStr);
+      if (isNaN(num)) return 'grade-na';
+      if (num >= 90) return 'grade-high';
+      if (num >= 75) return 'grade-mid';
+      return 'grade-low';
+    }
+
+    async function fetchGrades() {
+      const username = document.getElementById('user').value.trim();
+      const password = document.getElementById('pass').value;
+      const output = document.getElementById('output');
+      const btn = document.getElementById('loadBtn');
+
+      if (!username || !password) {
+        output.innerHTML = '<div class="status" style="color:#d1242f">Enter your username and password.</div>';
+        return;
+      }
+
+      btn.disabled = true;
+      output.innerHTML = '<div class="status">Logging in and fetching grades…</div>';
+
+      try {
+        const res = await fetch('http://localhost:3000/api/grades', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || data.error) {
+          output.innerHTML = `<div class="status" style="color:#d1242f">${data.error || 'Something went wrong.'}</div>`;
+          return;
+        }
+
+        if (data.classes && data.classes.length > 0) {
+          output.innerHTML = data.classes.map(c => `
+            <div class="course">
+              <div class="course-row">
+                <span class="course-name">${c.className}</span>
+                <span class="course-grade ${gradeClass(c.grade)}">${c.grade || 'N/A'}</span>
+              </div>
+              ${c.lastUpdated ? `<div class="course-updated">Updated ${c.lastUpdated}</div>` : ''}
+            </div>
+          `).join('');
+        } else {
+          output.innerHTML = '<div class="status">No classes found on this page.</div>';
+        }
+      } catch (err) {
+        output.innerHTML = '<div class="status" style="color:#d1242f">Error connecting to the backend server. Is server.js running?</div>';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
