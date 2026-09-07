@@ -79,7 +79,14 @@ async function launchBrowser() {
   const puppeteerModule = await import('puppeteer-core');
   const puppeteer = puppeteerModule.default;
 
-  // Local Mac development
+  /*
+   * LOCAL MAC
+   *
+   * Running:
+   *     node server.js
+   *
+   * uses the Chrome installation already on the Mac.
+   */
   if (require.main === module) {
     const chromePath = findLocalChrome();
 
@@ -107,7 +114,19 @@ async function launchBrowser() {
     });
   }
 
-  // Vercel production
+  /*
+   * VERCEL
+   *
+   * Vercel uses @sparticuz/chromium-min.
+   *
+   * The Chromium files are packaged during the Vercel build
+   * into:
+   *
+   *     public/chromium-pack.tar
+   *
+   * chromium-min receives the PUBLIC DIRECTORY, not the
+   * tar file itself.
+   */
   const chromiumModule = await import(
     '@sparticuz/chromium-min'
   );
@@ -117,23 +136,27 @@ async function launchBrowser() {
   console.log('Running in VERCEL mode.');
   console.log('Preparing Sparticuz Chromium...');
 
-  const packPath = path.join(
+  const chromiumDirectory = path.join(
     process.cwd(),
-    'public',
+    'public'
+  );
+
+  const packFile = path.join(
+    chromiumDirectory,
     'chromium-pack.tar'
   );
 
-  if (!fs.existsSync(packPath)) {
+  if (!fs.existsSync(packFile)) {
     throw new Error(
-      `Chromium package not found at ${packPath}`
+      `Chromium package not found at ${packFile}`
     );
   }
 
   console.log('Chromium package found:');
-  console.log(packPath);
+  console.log(packFile);
 
   const executablePath =
-    await chromium.executablePath(packPath);
+    await chromium.executablePath(chromiumDirectory);
 
   console.log(
     'Chromium executable:',
@@ -304,6 +327,8 @@ app.post('/api/grades', async (req, res) => {
     console.log(
       `13. Parsed ${classes.length} classes.`
     );
+
+    console.log('14. HAC grade check completed.');
 
     return res.json({
       classes
