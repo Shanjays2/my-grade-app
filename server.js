@@ -79,16 +79,6 @@ async function launchBrowser() {
   const puppeteerModule = await import('puppeteer-core');
   const puppeteer = puppeteerModule.default;
 
-  /*
-   * LOCAL MAC
-   *
-   * When running:
-   *
-   *     node server.js
-   *
-   * use the Chrome installation already
-   * installed on the Mac.
-   */
   if (require.main === module) {
     const chromePath = findLocalChrome();
 
@@ -115,25 +105,6 @@ async function launchBrowser() {
       ]
     });
   }
-
-  /*
-   * VERCEL
-   *
-   * @sparticuz/chromium-min does not contain
-   * the Chromium Brotli files itself.
-   *
-   * Our npm build script copies the required
-   * files into:
-   *
-   *     public/
-   *
-   * The directory contains:
-   *
-   *     chromium.br
-   *     fonts.tar.br
-   *     swiftshader.tar.br
-   *     al2023.tar.br
-   */
 
   const chromiumModule = await import(
     '@sparticuz/chromium-min'
@@ -299,9 +270,63 @@ app.post('/api/grades', async (req, res) => {
       page.url()
     );
 
+    /*
+     * If HAC sends us back to the login page,
+     * collect diagnostic information.
+     *
+     * IMPORTANT:
+     * We intentionally do NOT return the username
+     * or password.
+     */
     if (page.url().includes('/Account/LogOn')) {
+      console.log(
+        'HAC redirected back to the login page.'
+      );
+
+      const diagnostic = await page.evaluate(() => {
+        const bodyText =
+          document.body?.innerText || '';
+
+        const title =
+          document.title || '';
+
+        const errorElements = [
+          ...document.querySelectorAll(
+            '.validation-summary-errors, .field-validation-error, .error, .alert, [role="alert"]'
+          )
+        ];
+
+        const errors = errorElements
+          .map(element =>
+            element.innerText?.trim()
+          )
+          .filter(Boolean);
+
+        return {
+          title,
+          errors,
+          bodyPreview: bodyText
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 1500)
+        };
+      });
+
+      console.log(
+        'HAC diagnostic information:'
+      );
+
+      console.log(
+        JSON.stringify(
+          diagnostic,
+          null,
+          2
+        )
+      );
+
       return res.status(401).json({
-        error: 'HAC login was not successful.'
+        error: 'HAC login was not successful.',
+        diagnostic
       });
     }
 
