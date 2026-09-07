@@ -13,6 +13,7 @@
   "type": "commonjs",
   "dependencies": {
     "@sparticuz/chromium-min": "^149.0.0",
+    "@vercel/analytics": "^2.0.1",
     "axios": "^1.20.0",
     "axios-cookiejar-support": "^7.0.0",
     "cheerio": "^1.2.0",
