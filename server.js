@@ -2,9 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 
-const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium-min');
-
 const app = express();
 
 app.use(cors());
@@ -74,91 +71,95 @@ app.post('/api/grades', async (req, res) => {
     });
   }
 
-  let browser;
+  let browser = null;
 
   try {
     console.log('========================================');
     console.log('Starting HAC grade check...');
     console.log('========================================');
 
-    console.log('1. Preparing serverless Chromium...');
+    /*
+     * IMPORTANT:
+     * Puppeteer is ESM.
+     * This MUST be a dynamic import.
+     *
+     * Do NOT change this to:
+     * const puppeteer = require('puppeteer');
+     */
+    const puppeteerModule = await import('puppeteer');
 
-    const chromiumPackUrl =
-      'https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.tar';
+    const puppeteer = puppeteerModule.default;
 
-    const executablePath =
-      await chromium.executablePath(chromiumPackUrl);
+    if (!puppeteer) {
+      throw new Error('Puppeteer could not be loaded.');
+    }
 
-    console.log(
-      '2. Chromium executable:',
-      executablePath
-    );
+    console.log('Puppeteer loaded successfully.');
 
-    console.log('3. Opening HAC login page...');
+    console.log('1. Opening HAC login page...');
 
     browser = await puppeteer.launch({
+      headless: true,
       args: [
-        ...chromium.args,
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--no-first-run',
         '--no-zygote'
-      ],
-      defaultViewport: {
-        width: 1440,
-        height: 900
-      },
-      executablePath,
-      headless: 'shell'
+      ]
     });
 
+    console.log('Browser launched successfully.');
+
     const page = await browser.newPage();
+
+    await page.setViewport({
+      width: 1440,
+      height: 900
+    });
 
     const loginUrl =
       'https://hac.friscoisd.org/HomeAccess/Account/LogOn?ReturnUrl=%2FHomeAccess%2FClasses%2FClasswork';
 
-    console.log('4. Loading HAC...');
+    console.log('2. Loading HAC...');
 
     await page.goto(loginUrl, {
       waitUntil: 'networkidle2',
       timeout: 30000
     });
 
-    console.log('5. Waiting for login fields...');
+    console.log('3. Waiting for login fields...');
 
-    await page.waitForSelector(
-      '#LogOnDetails_UserName',
-      {
-        visible: true,
-        timeout: 15000
-      }
-    );
+    await page.waitForSelector('#LogOnDetails_UserName', {
+      visible: true,
+      timeout: 15000
+    });
 
-    await page.waitForSelector(
-      '#LogOnDetails_Password',
-      {
-        visible: true,
-        timeout: 15000
-      }
-    );
+    await page.waitForSelector('#LogOnDetails_Password', {
+      visible: true,
+      timeout: 15000
+    });
 
-    console.log('6. Entering credentials...');
+    console.log('4. Entering credentials...');
 
     await page.type(
       '#LogOnDetails_UserName',
       username,
-      { delay: 10 }
+      {
+        delay: 10
+      }
     );
 
     await page.type(
       '#LogOnDetails_Password',
       password,
-      { delay: 10 }
+      {
+        delay: 10
+      }
     );
 
-    console.log('7. Submitting HAC login...');
+    console.log('5. Submitting HAC login...');
 
     await Promise.all([
       page.click(
@@ -171,10 +172,7 @@ app.post('/api/grades', async (req, res) => {
       }).catch(() => null)
     ]);
 
-    console.log(
-      '8. Current HAC URL:',
-      page.url()
-    );
+    console.log('6. Current HAC URL:', page.url());
 
     if (page.url().includes('/Account/LogOn')) {
       await browser.close();
@@ -185,13 +183,13 @@ app.post('/api/grades', async (req, res) => {
       });
     }
 
-    console.log('9. HAC login successful.');
+    console.log('7. HAC login successful.');
 
-    await new Promise(resolve =>
-      setTimeout(resolve, 3000)
-    );
+    await new Promise(resolve => {
+      setTimeout(resolve, 3000);
+    });
 
-    console.log('10. Looking for Classwork iframe...');
+    console.log('8. Looking for Classwork iframe...');
 
     const iframeElement = await page.$(
       '#sg-legacy-iframe'
@@ -207,8 +205,7 @@ app.post('/api/grades', async (req, res) => {
       });
     }
 
-    const frame =
-      await iframeElement.contentFrame();
+    const frame = await iframeElement.contentFrame();
 
     if (!frame) {
       await browser.close();
@@ -220,13 +217,13 @@ app.post('/api/grades', async (req, res) => {
       });
     }
 
-    console.log('11. Classwork iframe found.');
+    console.log('9. Classwork iframe found.');
 
-    await new Promise(resolve =>
-      setTimeout(resolve, 5000)
-    );
+    await new Promise(resolve => {
+      setTimeout(resolve, 5000);
+    });
 
-    console.log('12. Reading grade information...');
+    console.log('10. Reading grade information...');
 
     const bodyText = await frame.evaluate(() => {
       return document.body.innerText;
@@ -235,25 +232,23 @@ app.post('/api/grades', async (req, res) => {
     const classes = parseGrades(bodyText);
 
     console.log(
-      `13. Parsed ${classes.length} classes.`
+      `11. Parsed ${classes.length} classes.`
     );
 
     await browser.close();
     browser = null;
 
-    console.log(
-      '14. HAC grade check completed.'
-    );
+    console.log('12. HAC grade check completed.');
 
     return res.json({
       classes
     });
 
   } catch (error) {
-    console.error(
-      'HAC scrape error:',
-      error
-    );
+    console.error('========================================');
+    console.error('HAC scrape error');
+    console.error('========================================');
+    console.error(error);
 
     if (browser) {
       await browser.close().catch(() => {});
