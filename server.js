@@ -78,14 +78,6 @@ app.post('/api/grades', async (req, res) => {
     console.log('Starting HAC grade check...');
     console.log('========================================');
 
-    /*
-     * Vercel:
-     * Use puppeteer-core with Sparticuz Chromium.
-     *
-     * This avoids Puppeteer's normal Chrome download,
-     * which is not reliable inside a Vercel serverless function.
-     */
-
     const puppeteerModule = await import('puppeteer-core');
     const puppeteer = puppeteerModule.default;
 
@@ -98,27 +90,23 @@ app.post('/api/grades', async (req, res) => {
     console.log('Puppeteer Core loaded.');
     console.log('Chromium package loaded.');
 
+    console.log('1. Preparing Chromium...');
+
     /*
-     * @sparticuz/chromium-min does not contain the full
-     * Chromium binary in the npm package.
+     * Do not provide a custom download URL.
      *
-     * For Vercel, use the hosted Chromium pack.
+     * The Chromium package handles its executable
+     * location itself.
      */
-
-    const chromiumPack =
-      'https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.tar';
-
-    console.log('Preparing Chromium...');
-
     const executablePath =
-      await chromium.executablePath(chromiumPack);
+      await chromium.executablePath();
 
     console.log(
       'Chromium executable:',
       executablePath
     );
 
-    console.log('1. Launching browser...');
+    console.log('2. Launching browser...');
 
     browser = await puppeteer.launch({
       args: [
@@ -135,7 +123,9 @@ app.post('/api/grades', async (req, res) => {
       headless: chromium.headless
     });
 
-    console.log('2. Browser launched successfully.');
+    console.log(
+      '3. Browser launched successfully.'
+    );
 
     const page = await browser.newPage();
 
@@ -147,14 +137,16 @@ app.post('/api/grades', async (req, res) => {
     const loginUrl =
       'https://hac.friscoisd.org/HomeAccess/Account/LogOn?ReturnUrl=%2FHomeAccess%2FClasses%2FClasswork';
 
-    console.log('3. Loading HAC...');
+    console.log('4. Loading HAC...');
 
     await page.goto(loginUrl, {
       waitUntil: 'networkidle2',
       timeout: 30000
     });
 
-    console.log('4. Waiting for login fields...');
+    console.log(
+      '5. Waiting for login fields...'
+    );
 
     await page.waitForSelector(
       '#LogOnDetails_UserName',
@@ -172,7 +164,7 @@ app.post('/api/grades', async (req, res) => {
       }
     );
 
-    console.log('5. Entering credentials...');
+    console.log('6. Entering credentials...');
 
     await page.type(
       '#LogOnDetails_UserName',
@@ -190,7 +182,9 @@ app.post('/api/grades', async (req, res) => {
       }
     );
 
-    console.log('6. Submitting HAC login...');
+    console.log(
+      '7. Submitting HAC login...'
+    );
 
     await Promise.all([
       page.click(
@@ -204,27 +198,32 @@ app.post('/api/grades', async (req, res) => {
     ]);
 
     console.log(
-      '7. Current HAC URL:',
+      '8. Current HAC URL:',
       page.url()
     );
 
-    if (page.url().includes('/Account/LogOn')) {
+    if (
+      page.url().includes('/Account/LogOn')
+    ) {
       await browser.close();
       browser = null;
 
       return res.status(401).json({
-        error: 'HAC login was not successful.'
+        error:
+          'HAC login was not successful.'
       });
     }
 
-    console.log('8. HAC login successful.');
+    console.log(
+      '9. HAC login successful.'
+    );
 
     await new Promise(resolve => {
       setTimeout(resolve, 3000);
     });
 
     console.log(
-      '9. Looking for Classwork iframe...'
+      '10. Looking for Classwork iframe...'
     );
 
     const iframeElement = await page.$(
@@ -255,7 +254,7 @@ app.post('/api/grades', async (req, res) => {
     }
 
     console.log(
-      '10. Classwork iframe found.'
+      '11. Classwork iframe found.'
     );
 
     await new Promise(resolve => {
@@ -263,7 +262,7 @@ app.post('/api/grades', async (req, res) => {
     });
 
     console.log(
-      '11. Reading grade information...'
+      '12. Reading grade information...'
     );
 
     const bodyText = await frame.evaluate(() => {
@@ -273,14 +272,14 @@ app.post('/api/grades', async (req, res) => {
     const classes = parseGrades(bodyText);
 
     console.log(
-      `12. Parsed ${classes.length} classes.`
+      `13. Parsed ${classes.length} classes.`
     );
 
     await browser.close();
     browser = null;
 
     console.log(
-      '13. HAC grade check completed.'
+      '14. HAC grade check completed.'
     );
 
     return res.json({
