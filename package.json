@@ -17,6 +17,7 @@
     "cheerio": "^1.2.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "puppeteer": "^25.10.0",
     "puppeteer-core": "^25.10.0",
     "tough-cookie": "^6.0.2"
   }
