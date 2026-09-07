@@ -82,10 +82,12 @@ async function launchBrowser() {
   /*
    * LOCAL MAC
    *
-   * Running:
+   * When running:
+   *
    *     node server.js
    *
-   * uses the Chrome installation already on the Mac.
+   * use the Chrome installation already
+   * installed on the Mac.
    */
   if (require.main === module) {
     const chromePath = findLocalChrome();
@@ -117,16 +119,22 @@ async function launchBrowser() {
   /*
    * VERCEL
    *
-   * Vercel uses @sparticuz/chromium-min.
+   * @sparticuz/chromium-min does not contain
+   * the Chromium Brotli files itself.
    *
-   * The Chromium files are packaged during the Vercel build
-   * into:
+   * Our npm build script copies the required
+   * files into:
    *
-   *     public/chromium-pack.tar
+   *     public/
    *
-   * chromium-min receives the PUBLIC DIRECTORY, not the
-   * tar file itself.
+   * The directory contains:
+   *
+   *     chromium.br
+   *     fonts.tar.br
+   *     swiftshader.tar.br
+   *     al2023.tar.br
    */
+
   const chromiumModule = await import(
     '@sparticuz/chromium-min'
   );
@@ -141,22 +149,38 @@ async function launchBrowser() {
     'public'
   );
 
-  const packFile = path.join(
-    chromiumDirectory,
-    'chromium-pack.tar'
-  );
+  const requiredFiles = [
+    'chromium.br',
+    'fonts.tar.br',
+    'swiftshader.tar.br',
+    'al2023.tar.br'
+  ];
 
-  if (!fs.existsSync(packFile)) {
-    throw new Error(
-      `Chromium package not found at ${packFile}`
+  for (const file of requiredFiles) {
+    const filePath = path.join(
+      chromiumDirectory,
+      file
+    );
+
+    if (!fs.existsSync(filePath)) {
+      throw new Error(
+        `Chromium file not found: ${filePath}`
+      );
+    }
+
+    console.log(
+      `Chromium file found: ${file}`
     );
   }
 
-  console.log('Chromium package found:');
-  console.log(packFile);
+  console.log(
+    'All Chromium files found successfully.'
+  );
 
   const executablePath =
-    await chromium.executablePath(chromiumDirectory);
+    await chromium.executablePath(
+      chromiumDirectory
+    );
 
   console.log(
     'Chromium executable:',
@@ -287,7 +311,9 @@ app.post('/api/grades', async (req, res) => {
       setTimeout(resolve, 3000);
     });
 
-    console.log('10. Looking for Classwork iframe...');
+    console.log(
+      '10. Looking for Classwork iframe...'
+    );
 
     const iframeElement = await page.$(
       '#sg-legacy-iframe'
@@ -310,13 +336,17 @@ app.post('/api/grades', async (req, res) => {
       });
     }
 
-    console.log('11. Classwork iframe found.');
+    console.log(
+      '11. Classwork iframe found.'
+    );
 
     await new Promise(resolve => {
       setTimeout(resolve, 5000);
     });
 
-    console.log('12. Reading grade information...');
+    console.log(
+      '12. Reading grade information...'
+    );
 
     const bodyText = await frame.evaluate(() => {
       return document.body.innerText;
@@ -328,7 +358,9 @@ app.post('/api/grades', async (req, res) => {
       `13. Parsed ${classes.length} classes.`
     );
 
-    console.log('14. HAC grade check completed.');
+    console.log(
+      '14. HAC grade check completed.'
+    );
 
     return res.json({
       classes
@@ -336,9 +368,13 @@ app.post('/api/grades', async (req, res) => {
 
   } catch (error) {
     console.error('');
-    console.error('========================================');
+    console.error(
+      '========================================'
+    );
     console.error('HAC scrape error');
-    console.error('========================================');
+    console.error(
+      '========================================'
+    );
     console.error(error);
 
     return res.status(500).json({
@@ -357,14 +393,26 @@ if (require.main === module) {
   const PORT = process.env.PORT || 3000;
 
   app.listen(PORT, () => {
-    console.log('========================================');
-    console.log('HAC Grade Viewer - LOCAL SERVER');
-    console.log('========================================');
+    console.log(
+      '========================================'
+    );
+    console.log(
+      'HAC Grade Viewer - LOCAL SERVER'
+    );
+    console.log(
+      '========================================'
+    );
     console.log('');
-    console.log(`Server running at: http://localhost:${PORT}`);
+    console.log(
+      `Server running at: http://localhost:${PORT}`
+    );
     console.log('');
-    console.log('Open that address in your browser.');
-    console.log('Press Ctrl+C to stop the server.');
+    console.log(
+      'Open that address in your browser.'
+    );
+    console.log(
+      'Press Ctrl+C to stop the server.'
+    );
     console.log('');
   });
 }

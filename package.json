@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "build": "mkdir -p public && tar -cf public/chromium-pack.tar -C node_modules/@sparticuz/chromium/bin ."
+    "build": "mkdir -p public && cp node_modules/@sparticuz/chromium/bin/*.br public/ && cp node_modules/@sparticuz/chromium/bin/*.tar.br public/"
   },
   "keywords": [],
   "author": "",
