@@ -20,5 +20,8 @@
     "puppeteer": "^25.10.0",
     "puppeteer-core": "^25.10.0",
     "tough-cookie": "^6.0.2"
+  },
+  "allowScripts": {
+    "puppeteer": "true"
   }
 }
