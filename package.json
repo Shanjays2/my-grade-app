@@ -4,7 +4,8 @@
   "description": "HAC Grade Viewer",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "mkdir -p public && tar -cf public/chromium-pack.tar -C node_modules/@sparticuz/chromium/bin ."
   },
   "keywords": [],
   "author": "",
@@ -19,5 +20,8 @@
     "express": "^5.2.1",
     "puppeteer-core": "^24.23.1",
     "tough-cookie": "^6.0.2"
+  },
+  "devDependencies": {
+    "@sparticuz/chromium": "149.0.0"
   }
 }
