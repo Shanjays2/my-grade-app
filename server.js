@@ -79,38 +79,63 @@ app.post('/api/grades', async (req, res) => {
     console.log('========================================');
 
     /*
-     * IMPORTANT:
-     * Puppeteer is ESM.
-     * This MUST be a dynamic import.
+     * Vercel:
+     * Use puppeteer-core with Sparticuz Chromium.
      *
-     * Do NOT change this to:
-     * const puppeteer = require('puppeteer');
+     * This avoids Puppeteer's normal Chrome download,
+     * which is not reliable inside a Vercel serverless function.
      */
-    const puppeteerModule = await import('puppeteer');
 
+    const puppeteerModule = await import('puppeteer-core');
     const puppeteer = puppeteerModule.default;
 
-    if (!puppeteer) {
-      throw new Error('Puppeteer could not be loaded.');
-    }
+    const chromiumModule = await import(
+      '@sparticuz/chromium-min'
+    );
 
-    console.log('Puppeteer loaded successfully.');
+    const chromium = chromiumModule.default;
 
-    console.log('1. Opening HAC login page...');
+    console.log('Puppeteer Core loaded.');
+    console.log('Chromium package loaded.');
+
+    /*
+     * @sparticuz/chromium-min does not contain the full
+     * Chromium binary in the npm package.
+     *
+     * For Vercel, use the hosted Chromium pack.
+     */
+
+    const chromiumPack =
+      'https://github.com/Sparticuz/chromium/releases/download/v149.0.0/chromium-v149.0.0-pack.tar';
+
+    console.log('Preparing Chromium...');
+
+    const executablePath =
+      await chromium.executablePath(chromiumPack);
+
+    console.log(
+      'Chromium executable:',
+      executablePath
+    );
+
+    console.log('1. Launching browser...');
 
     browser = await puppeteer.launch({
-      headless: true,
       args: [
+        ...chromium.args,
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--no-first-run',
         '--no-zygote'
-      ]
+      ],
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: chromium.headless
     });
 
-    console.log('Browser launched successfully.');
+    console.log('2. Browser launched successfully.');
 
     const page = await browser.newPage();
 
@@ -122,26 +147,32 @@ app.post('/api/grades', async (req, res) => {
     const loginUrl =
       'https://hac.friscoisd.org/HomeAccess/Account/LogOn?ReturnUrl=%2FHomeAccess%2FClasses%2FClasswork';
 
-    console.log('2. Loading HAC...');
+    console.log('3. Loading HAC...');
 
     await page.goto(loginUrl, {
       waitUntil: 'networkidle2',
       timeout: 30000
     });
 
-    console.log('3. Waiting for login fields...');
+    console.log('4. Waiting for login fields...');
 
-    await page.waitForSelector('#LogOnDetails_UserName', {
-      visible: true,
-      timeout: 15000
-    });
+    await page.waitForSelector(
+      '#LogOnDetails_UserName',
+      {
+        visible: true,
+        timeout: 15000
+      }
+    );
 
-    await page.waitForSelector('#LogOnDetails_Password', {
-      visible: true,
-      timeout: 15000
-    });
+    await page.waitForSelector(
+      '#LogOnDetails_Password',
+      {
+        visible: true,
+        timeout: 15000
+      }
+    );
 
-    console.log('4. Entering credentials...');
+    console.log('5. Entering credentials...');
 
     await page.type(
       '#LogOnDetails_UserName',
@@ -159,7 +190,7 @@ app.post('/api/grades', async (req, res) => {
       }
     );
 
-    console.log('5. Submitting HAC login...');
+    console.log('6. Submitting HAC login...');
 
     await Promise.all([
       page.click(
@@ -172,7 +203,10 @@ app.post('/api/grades', async (req, res) => {
       }).catch(() => null)
     ]);
 
-    console.log('6. Current HAC URL:', page.url());
+    console.log(
+      '7. Current HAC URL:',
+      page.url()
+    );
 
     if (page.url().includes('/Account/LogOn')) {
       await browser.close();
@@ -183,13 +217,15 @@ app.post('/api/grades', async (req, res) => {
       });
     }
 
-    console.log('7. HAC login successful.');
+    console.log('8. HAC login successful.');
 
     await new Promise(resolve => {
       setTimeout(resolve, 3000);
     });
 
-    console.log('8. Looking for Classwork iframe...');
+    console.log(
+      '9. Looking for Classwork iframe...'
+    );
 
     const iframeElement = await page.$(
       '#sg-legacy-iframe'
@@ -205,7 +241,8 @@ app.post('/api/grades', async (req, res) => {
       });
     }
 
-    const frame = await iframeElement.contentFrame();
+    const frame =
+      await iframeElement.contentFrame();
 
     if (!frame) {
       await browser.close();
@@ -217,13 +254,17 @@ app.post('/api/grades', async (req, res) => {
       });
     }
 
-    console.log('9. Classwork iframe found.');
+    console.log(
+      '10. Classwork iframe found.'
+    );
 
     await new Promise(resolve => {
       setTimeout(resolve, 5000);
     });
 
-    console.log('10. Reading grade information...');
+    console.log(
+      '11. Reading grade information...'
+    );
 
     const bodyText = await frame.evaluate(() => {
       return document.body.innerText;
@@ -232,22 +273,33 @@ app.post('/api/grades', async (req, res) => {
     const classes = parseGrades(bodyText);
 
     console.log(
-      `11. Parsed ${classes.length} classes.`
+      `12. Parsed ${classes.length} classes.`
     );
 
     await browser.close();
     browser = null;
 
-    console.log('12. HAC grade check completed.');
+    console.log(
+      '13. HAC grade check completed.'
+    );
 
     return res.json({
       classes
     });
 
   } catch (error) {
-    console.error('========================================');
-    console.error('HAC scrape error');
-    console.error('========================================');
+    console.error(
+      '========================================'
+    );
+
+    console.error(
+      'HAC scrape error'
+    );
+
+    console.error(
+      '========================================'
+    );
+
     console.error(error);
 
     if (browser) {
@@ -255,7 +307,8 @@ app.post('/api/grades', async (req, res) => {
     }
 
     return res.status(500).json({
-      error: 'Failed to communicate with HAC.',
+      error:
+        'Failed to communicate with HAC.',
       details: error.message
     });
   }
