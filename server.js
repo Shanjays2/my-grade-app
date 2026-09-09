@@ -1,15 +1,127 @@
+require('dotenv').config({ path: '.env.local' });
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+
+const { Redis } = require('@upstash/redis');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN
+});
+
+const SESSION_TTL = 30 * 24 * 60 * 60;
+const SESSION_COOKIE_NAME = 'hac_session';
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+/*
+ * Check whether this browser/device has
+ * a valid remembered HAC session.
+ */
+app.get('/api/session', async (req, res) => {
+  try {
+    const cookieHeader = req.headers.cookie || '';
+
+    const cookies = {};
+
+    cookieHeader
+      .split(';')
+      .map(part => part.trim())
+      .filter(Boolean)
+      .forEach(part => {
+        const separatorIndex = part.indexOf('=');
+
+        if (separatorIndex === -1) return;
+
+        const name = part
+          .slice(0, separatorIndex)
+          .trim();
+
+        const value = part
+          .slice(separatorIndex + 1)
+          .trim();
+
+        cookies[name] = value;
+      });
+
+    const sessionId =
+      cookies[SESSION_COOKIE_NAME];
+
+    if (!sessionId) {
+      return res.json({
+        authenticated: false
+      });
+    }
+
+    const sessionKey =
+      `hac:session:${sessionId}`;
+
+    const sessionData =
+      await redis.get(sessionKey);
+
+    if (!sessionData) {
+      return res.json({
+        authenticated: false
+      });
+    }
+
+    let session;
+
+    if (typeof sessionData === 'string') {
+      session = JSON.parse(sessionData);
+    } else {
+      session = sessionData;
+    }
+
+    /*
+     * Refresh the Redis expiration whenever
+     * the remembered device comes back.
+     */
+    await redis.expire(
+      sessionKey,
+      SESSION_TTL
+    );
+
+    session.lastSeen =
+      new Date().toISOString();
+
+    await redis.set(
+      sessionKey,
+      JSON.stringify(session),
+      {
+        ex: SESSION_TTL
+      }
+    );
+
+    return res.json({
+      authenticated: true,
+      username: session.username,
+      classes: session.classes || [],
+      remembered: true
+    });
+
+  } catch (error) {
+    console.error(
+      'Session check error:',
+      error
+    );
+
+    return res.status(500).json({
+      authenticated: false,
+      error: 'Could not check saved session.'
+    });
+  }
 });
 
 function parseGrades(bodyText) {
@@ -76,11 +188,15 @@ function findLocalChrome() {
 }
 
 async function launchBrowser() {
-  const puppeteerModule = await import('puppeteer-core');
-  const puppeteer = puppeteerModule.default;
+  const puppeteerModule =
+    await import('puppeteer-core');
+
+  const puppeteer =
+    puppeteerModule.default;
 
   if (require.main === module) {
-    const chromePath = findLocalChrome();
+    const chromePath =
+      findLocalChrome();
 
     if (!chromePath) {
       throw new Error(
@@ -88,8 +204,14 @@ async function launchBrowser() {
       );
     }
 
-    console.log('Running in LOCAL mode.');
-    console.log('Using Chrome:');
+    console.log(
+      'Running in LOCAL mode.'
+    );
+
+    console.log(
+      'Using Chrome:'
+    );
+
     console.log(chromePath);
 
     return puppeteer.launch({
@@ -106,19 +228,27 @@ async function launchBrowser() {
     });
   }
 
-  const chromiumModule = await import(
-    '@sparticuz/chromium-min'
+  const chromiumModule =
+    await import(
+      '@sparticuz/chromium-min'
+    );
+
+  const chromium =
+    chromiumModule.default;
+
+  console.log(
+    'Running in VERCEL mode.'
   );
 
-  const chromium = chromiumModule.default;
-
-  console.log('Running in VERCEL mode.');
-  console.log('Preparing Sparticuz Chromium...');
-
-  const chromiumDirectory = path.join(
-    process.cwd(),
-    'public'
+  console.log(
+    'Preparing Sparticuz Chromium...'
   );
+
+  const chromiumDirectory =
+    path.join(
+      process.cwd(),
+      'public'
+    );
 
   const requiredFiles = [
     'chromium.br',
@@ -128,10 +258,11 @@ async function launchBrowser() {
   ];
 
   for (const file of requiredFiles) {
-    const filePath = path.join(
-      chromiumDirectory,
-      file
-    );
+    const filePath =
+      path.join(
+        chromiumDirectory,
+        file
+      );
 
     if (!fs.existsSync(filePath)) {
       throw new Error(
@@ -168,18 +299,22 @@ async function launchBrowser() {
       '--no-first-run',
       '--no-zygote'
     ],
-    defaultViewport: chromium.defaultViewport,
+    defaultViewport:
+      chromium.defaultViewport,
     executablePath,
-    headless: chromium.headless
+    headless:
+      chromium.headless
   });
 }
 
 app.post('/api/grades', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } =
+    req.body;
 
   if (!username || !password) {
     return res.status(400).json({
-      error: 'Username and password are required.'
+      error:
+        'Username and password are required.'
     });
   }
 
@@ -187,17 +322,29 @@ app.post('/api/grades', async (req, res) => {
 
   try {
     console.log('');
-    console.log('========================================');
-    console.log('Starting HAC grade check...');
-    console.log('========================================');
+    console.log(
+      '========================================'
+    );
+    console.log(
+      'Starting HAC grade check...'
+    );
+    console.log(
+      '========================================'
+    );
 
-    console.log('1. Launching browser...');
+    console.log(
+      '1. Launching browser...'
+    );
 
-    browser = await launchBrowser();
+    browser =
+      await launchBrowser();
 
-    console.log('2. Browser launched successfully.');
+    console.log(
+      '2. Browser launched successfully.'
+    );
 
-    const page = await browser.newPage();
+    const page =
+      await browser.newPage();
 
     await page.setViewport({
       width: 1440,
@@ -207,16 +354,25 @@ app.post('/api/grades', async (req, res) => {
     const loginUrl =
       'https://hac.friscoisd.org/HomeAccess/Account/LogOn?ReturnUrl=%2FHomeAccess%2FClasses%2FClasswork';
 
-    console.log('3. Loading HAC...');
+    console.log(
+      '3. Loading HAC...'
+    );
 
-    await page.goto(loginUrl, {
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
+    await page.goto(
+      loginUrl,
+      {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      }
+    );
 
-    console.log('4. HAC login page loaded.');
+    console.log(
+      '4. HAC login page loaded.'
+    );
 
-    console.log('5. Waiting for login fields...');
+    console.log(
+      '5. Waiting for login fields...'
+    );
 
     await page.waitForSelector(
       '#LogOnDetails_UserName',
@@ -234,7 +390,9 @@ app.post('/api/grades', async (req, res) => {
       }
     );
 
-    console.log('6. Entering credentials...');
+    console.log(
+      '6. Entering credentials...'
+    );
 
     await page.type(
       '#LogOnDetails_UserName',
@@ -252,7 +410,9 @@ app.post('/api/grades', async (req, res) => {
       }
     );
 
-    console.log('7. Submitting HAC login...');
+    console.log(
+      '7. Submitting HAC login...'
+    );
 
     await Promise.all([
       page.click(
@@ -270,47 +430,46 @@ app.post('/api/grades', async (req, res) => {
       page.url()
     );
 
-    /*
-     * If HAC sends us back to the login page,
-     * collect diagnostic information.
-     *
-     * IMPORTANT:
-     * We intentionally do NOT return the username
-     * or password.
-     */
-    if (page.url().includes('/Account/LogOn')) {
+    if (
+      page.url().includes(
+        '/Account/LogOn'
+      )
+    ) {
       console.log(
         'HAC redirected back to the login page.'
       );
 
-      const diagnostic = await page.evaluate(() => {
-        const bodyText =
-          document.body?.innerText || '';
+      const diagnostic =
+        await page.evaluate(() => {
+          const bodyText =
+            document.body?.innerText || '';
 
-        const title =
-          document.title || '';
+          const title =
+            document.title || '';
 
-        const errorElements = [
-          ...document.querySelectorAll(
-            '.validation-summary-errors, .field-validation-error, .error, .alert, [role="alert"]'
-          )
-        ];
+          const errorElements = [
+            ...document.querySelectorAll(
+              '.validation-summary-errors, .field-validation-error, .error, .alert, [role="alert"]'
+            )
+          ];
 
-        const errors = errorElements
-          .map(element =>
-            element.innerText?.trim()
-          )
-          .filter(Boolean);
+          const errors =
+            errorElements
+              .map(element =>
+                element.innerText?.trim()
+              )
+              .filter(Boolean);
 
-        return {
-          title,
-          errors,
-          bodyPreview: bodyText
-            .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, 1500)
-        };
-      });
+          return {
+            title,
+            errors,
+            bodyPreview:
+              bodyText
+                .replace(/\s+/g, ' ')
+                .trim()
+                .slice(0, 1500)
+          };
+        });
 
       console.log(
         'HAC diagnostic information:'
@@ -325,12 +484,15 @@ app.post('/api/grades', async (req, res) => {
       );
 
       return res.status(401).json({
-        error: 'HAC login was not successful.',
+        error:
+          'HAC login was not successful.',
         diagnostic
       });
     }
 
-    console.log('9. HAC login successful.');
+    console.log(
+      '9. HAC login successful.'
+    );
 
     await new Promise(resolve => {
       setTimeout(resolve, 3000);
@@ -340,9 +502,10 @@ app.post('/api/grades', async (req, res) => {
       '10. Looking for Classwork iframe...'
     );
 
-    const iframeElement = await page.$(
-      '#sg-legacy-iframe'
-    );
+    const iframeElement =
+      await page.$(
+        '#sg-legacy-iframe'
+      );
 
     if (!iframeElement) {
       return res.status(500).json({
@@ -373,11 +536,13 @@ app.post('/api/grades', async (req, res) => {
       '12. Reading grade information...'
     );
 
-    const bodyText = await frame.evaluate(() => {
-      return document.body.innerText;
-    });
+    const bodyText =
+      await frame.evaluate(() => {
+        return document.body.innerText;
+      });
 
-    const classes = parseGrades(bodyText);
+    const classes =
+      parseGrades(bodyText);
 
     console.log(
       `13. Parsed ${classes.length} classes.`
@@ -387,8 +552,38 @@ app.post('/api/grades', async (req, res) => {
       '14. HAC grade check completed.'
     );
 
+    const sessionId =
+      crypto.randomBytes(32).toString('hex');
+
+    const sessionData = {
+      username,
+      classes,
+      createdAt:
+        new Date().toISOString(),
+      lastSeen:
+        new Date().toISOString()
+    };
+
+    await redis.set(
+      `hac:session:${sessionId}`,
+      JSON.stringify(sessionData),
+      {
+        ex: SESSION_TTL
+      }
+    );
+
+    res.setHeader(
+      'Set-Cookie',
+      `hac_session=${sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
+    );
+
+    console.log(
+      '15. Device session saved.'
+    );
+
     return res.json({
-      classes
+      classes,
+      remembered: true
     });
 
   } catch (error) {
@@ -396,50 +591,67 @@ app.post('/api/grades', async (req, res) => {
     console.error(
       '========================================'
     );
-    console.error('HAC scrape error');
+    console.error(
+      'HAC scrape error'
+    );
     console.error(
       '========================================'
     );
     console.error(error);
 
     return res.status(500).json({
-      error: 'Failed to communicate with HAC.',
-      details: error.message
+      error:
+        'Failed to communicate with HAC.',
+      details:
+        error.message
     });
 
   } finally {
     if (browser) {
-      await browser.close().catch(() => {});
+      await browser.close()
+        .catch(() => {});
     }
   }
 });
 
 if (require.main === module) {
-  const PORT = process.env.PORT || 3000;
+  const PORT =
+    process.env.PORT || 3000;
 
-  app.listen(PORT, () => {
-    console.log(
-      '========================================'
-    );
-    console.log(
-      'HAC Grade Viewer - LOCAL SERVER'
-    );
-    console.log(
-      '========================================'
-    );
-    console.log('');
-    console.log(
-      `Server running at: http://localhost:${PORT}`
-    );
-    console.log('');
-    console.log(
-      'Open that address in your browser.'
-    );
-    console.log(
-      'Press Ctrl+C to stop the server.'
-    );
-    console.log('');
-  });
+  app.listen(
+    PORT,
+    () => {
+      console.log(
+        '========================================'
+      );
+
+      console.log(
+        'HAC Grade Viewer - LOCAL SERVER'
+      );
+
+      console.log(
+        '========================================'
+      );
+
+      console.log('');
+
+      console.log(
+        `Server running at: http://localhost:${PORT}`
+      );
+
+      console.log('');
+
+      console.log(
+        'Open that address in your browser.'
+      );
+
+      console.log(
+        'Press Ctrl+C to stop the server.'
+      );
+
+      console.log('');
+    }
+  );
 }
 
 module.exports = app;
