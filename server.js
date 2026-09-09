@@ -10,16 +10,36 @@ const { Redis } = require('@upstash/redis');
 
 const app = express();
 
-app.use(cors());
+// Add every origin your frontend is actually served from.
+// NOTE: if your Google Sites embed runs inside a sandboxed iframe,
+// log req.headers.origin once to see the real value and update this list.
+const ALLOWED_ORIGINS = [
+  'https://sites.google.com',
+  // 'https://sites.google.com/view/your-site-name',
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // requests with no Origin header (curl, same-origin) are allowed through
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+}));
 app.use(express.json());
 
+app.use((req, res, next) => {
+  console.log('Incoming request origin:', req.headers.origin);
+  next();
+});
 const redis = new Redis({
   url: process.env.KV_REST_API_URL,
   token: process.env.KV_REST_API_TOKEN
 });
 
 const SESSION_TTL = 30 * 24 * 60 * 60;
-const SESSION_COOKIE_NAME = 'hac_session';
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
@@ -31,32 +51,7 @@ app.get('/', (req, res) => {
  */
 app.get('/api/session', async (req, res) => {
   try {
-    const cookieHeader = req.headers.cookie || '';
-
-    const cookies = {};
-
-    cookieHeader
-      .split(';')
-      .map(part => part.trim())
-      .filter(Boolean)
-      .forEach(part => {
-        const separatorIndex = part.indexOf('=');
-
-        if (separatorIndex === -1) return;
-
-        const name = part
-          .slice(0, separatorIndex)
-          .trim();
-
-        const value = part
-          .slice(separatorIndex + 1)
-          .trim();
-
-        cookies[name] = value;
-      });
-
-    const sessionId =
-      cookies[SESSION_COOKIE_NAME];
+    const sessionId = req.headers['x-session-id'];
 
     if (!sessionId) {
       return res.json({
@@ -121,6 +116,21 @@ app.get('/api/session', async (req, res) => {
       authenticated: false,
       error: 'Could not check saved session.'
     });
+  }
+});
+
+app.post('/api/logout', async (req, res) => {
+  try {
+    const sessionId = req.headers['x-session-id'];
+
+    if (sessionId) {
+      await redis.del(`hac:session:${sessionId}`);
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Logout error:', error);
+    return res.status(500).json({ success: false });
   }
 });
 
@@ -572,17 +582,13 @@ app.post('/api/grades', async (req, res) => {
       }
     );
 
-    res.setHeader(
-      'Set-Cookie',
-      `hac_session=${sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
-    );
-
     console.log(
       '15. Device session saved.'
     );
 
     return res.json({
       classes,
+      sessionId,
       remembered: true
     });
 
