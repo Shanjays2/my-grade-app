@@ -10,87 +10,298 @@ const { Redis } = require('@upstash/redis');
 
 const app = express();
 
-// Add every origin your frontend is actually served from.
-// NOTE: if your Google Sites embed runs inside a sandboxed iframe,
-// log req.headers.origin once to see the real value and update this list.
+/*
+ * CORS
+ *
+ * Local testing:
+ * http://localhost:3000
+ *
+ * Later, when we move back to Google Sites, we can
+ * add https://sites.google.com back here.
+ */
 const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
   'https://sites.google.com',
-  // 'https://sites.google.com/view/your-site-name',
+  'https://*sites.google.com'
 ];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // requests with no Origin header (curl, same-origin) are allowed through
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+
+    console.log('Incoming request origin:', origin || 'none');
+
+    /*
+     * Requests without an Origin header are allowed.
+     * This includes curl and some direct browser requests.
+     */
+    if (!origin) {
       return callback(null, true);
     }
+
+    if (ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log('Blocked CORS origin:', origin);
+
     callback(new Error('Not allowed by CORS'));
   },
-  credentials: true
+
+  credentials: true,
+
+  allowedHeaders: [
+    'Content-Type',
+    'X-Session-ID'
+  ],
+
+  methods: [
+    'GET',
+    'POST',
+    'OPTIONS'
+  ]
 }));
+
 app.use(express.json());
 
-app.use((req, res, next) => {
-  console.log('Incoming request origin:', req.headers.origin);
-  next();
-});
+/*
+ * Upstash Redis
+ */
 const redis = new Redis({
   url: process.env.KV_REST_API_URL,
   token: process.env.KV_REST_API_TOKEN
 });
 
-const SESSION_TTL = 30 * 24 * 60 * 60;
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
 
 /*
- * Check whether this browser/device has
- * a valid remembered HAC session.
+ * Saved HAC sessions last 30 days.
+ */
+const SESSION_TTL =
+  30 * 24 * 60 * 60;
+
+
+/*
+ * Temporary Redis test.
+ *
+ * Open:
+ * http://localhost:3000/api/redis-test
+ */
+app.get('/api/redis-test', async (req, res) => {
+
+  try {
+
+    const testKey =
+      `redis:test:${crypto.randomBytes(8).toString('hex')}`;
+
+    const testValue = {
+      message: 'Redis is working!',
+      time: new Date().toISOString()
+    };
+
+    await redis.set(
+      testKey,
+      JSON.stringify(testValue),
+      {
+        ex: 60
+      }
+    );
+
+    const saved =
+      await redis.get(testKey);
+
+    await redis.del(testKey);
+
+    return res.json({
+      success: true,
+      message: 'Redis is working!',
+      redis: saved ? 'connected' : 'failed'
+    });
+
+  } catch (error) {
+
+    console.error(
+      'Redis test error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Redis test failed.',
+      error: error.message
+    });
+  }
+});
+
+
+/*
+ * Home page
+ */
+app.get('/', (req, res) => {
+
+  res.sendFile(
+    path.join(__dirname, 'index.html')
+  );
+
+});
+
+
+/*
+ * Check for a remembered HAC session.
  */
 app.get('/api/session', async (req, res) => {
-  try {
-    const sessionId = req.headers['x-session-id'];
 
+  try {
+
+    const sessionId =
+      req.headers['x-session-id'];
+
+    /*
+     * Temporary debugging.
+     *
+     * We intentionally do NOT print the actual session ID.
+     */
+    console.log('');
+    console.log('========== SESSION CHECK ==========');
+
+    console.log(
+      'Session ID received:',
+      sessionId ? 'YES' : 'NO'
+    );
+
+    console.log(
+      'Session ID length:',
+      sessionId ? sessionId.length : 0
+    );
+
+
+    /*
+     * No session ID means this browser has
+     * never logged in on this device.
+     */
     if (!sessionId) {
+
+      console.log(
+        'No session ID supplied.'
+      );
+
+      console.log(
+        '=================================='
+      );
+
       return res.json({
-        authenticated: false
+        authenticated: false,
+        remembered: false
       });
     }
+
+
+    /*
+     * Only allow our expected 64-character
+     * hexadecimal session IDs.
+     */
+    if (
+      !/^[a-f0-9]{64}$/i.test(sessionId)
+    ) {
+
+      console.log(
+        'Invalid session ID format.'
+      );
+
+      console.log(
+        '=================================='
+      );
+
+      return res.json({
+        authenticated: false,
+        remembered: false
+      });
+    }
+
 
     const sessionKey =
       `hac:session:${sessionId}`;
 
+
+    console.log(
+      'Looking for session in Redis...'
+    );
+
+
     const sessionData =
       await redis.get(sessionKey);
 
+
+    console.log(
+      'Session found in Redis:',
+      sessionData ? 'YES' : 'NO'
+    );
+
+
+    /*
+     * Redis does not have the session.
+     */
     if (!sessionData) {
+
+      console.log(
+        'The Redis session was not found.'
+      );
+
+      console.log(
+        '=================================='
+      );
+
       return res.json({
-        authenticated: false
+        authenticated: false,
+        remembered: false
       });
     }
 
-    let session;
-
-    if (typeof sessionData === 'string') {
-      session = JSON.parse(sessionData);
-    } else {
-      session = sessionData;
-    }
 
     /*
-     * Refresh the Redis expiration whenever
-     * the remembered device comes back.
+     * Redis may return an object or a JSON string.
      */
-    await redis.expire(
-      sessionKey,
-      SESSION_TTL
-    );
+    let session;
 
+    if (
+      typeof sessionData === 'string'
+    ) {
+
+      try {
+
+        session =
+          JSON.parse(sessionData);
+
+      } catch (parseError) {
+
+        console.error(
+          'Could not parse saved session:',
+          parseError
+        );
+
+        return res.status(500).json({
+          authenticated: false,
+          remembered: false,
+          error: 'Saved session data is invalid.'
+        });
+      }
+
+    } else {
+
+      session =
+        sessionData;
+
+    }
+
+
+    /*
+     * Update lastSeen.
+     */
     session.lastSeen =
       new Date().toISOString();
 
+
+    /*
+     * Refresh the session for another 30 days.
+     */
     await redis.set(
       sessionKey,
       JSON.stringify(session),
@@ -99,160 +310,347 @@ app.get('/api/session', async (req, res) => {
       }
     );
 
+
+    console.log(
+      'Session restored successfully.'
+    );
+
+    console.log(
+      '=================================='
+    );
+
+
     return res.json({
+
       authenticated: true,
-      username: session.username,
-      classes: session.classes || [],
-      remembered: true
+
+      remembered: true,
+
+      username:
+        session.username || null,
+
+      classes:
+        session.classes || [],
+
+      lastSeen:
+        session.lastSeen || null
+
     });
 
+
   } catch (error) {
+
     console.error(
       'Session check error:',
       error
     );
 
+    console.log(
+      '=================================='
+    );
+
     return res.status(500).json({
+
       authenticated: false,
-      error: 'Could not check saved session.'
+
+      remembered: false,
+
+      error:
+        'Could not check saved session.'
+
     });
+
   }
+
 });
 
-app.post('/api/logout', async (req, res) => {
-  try {
-    const sessionId = req.headers['x-session-id'];
 
-    if (sessionId) {
-      await redis.del(`hac:session:${sessionId}`);
+/*
+ * Logout / forget the saved HAC session.
+ */
+app.post('/api/logout', async (req, res) => {
+
+  try {
+
+    const sessionId =
+      req.headers['x-session-id'];
+
+
+    if (!sessionId) {
+
+      return res.json({
+        success: true
+      });
+
     }
 
-    return res.json({ success: true });
+
+    if (
+      !/^[a-f0-9]{64}$/i.test(sessionId)
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid session ID.'
+      });
+
+    }
+
+
+    await redis.del(
+      `hac:session:${sessionId}`
+    );
+
+
+    console.log(
+      'HAC saved session deleted.'
+    );
+
+
+    return res.json({
+      success: true
+    });
+
+
   } catch (error) {
-    console.error('Logout error:', error);
-    return res.status(500).json({ success: false });
+
+    console.error(
+      'Logout error:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false
+    });
+
   }
+
 });
 
-function parseGrades(bodyText) {
-  const lines = bodyText
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean);
 
-  const classRegex = /^[A-Z]{2,6}\d{3,6}[A-Z]?\s*-\s*\d+\s+.+/;
-  const gradeRegex = /Student Grades\s+([\d.]+)%/;
-  const updatedRegex = /Last Updated:\s*([\d/]+)/;
+/*
+ * Parse HAC grades.
+ */
+function parseGrades(bodyText) {
+
+  const lines =
+    bodyText
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+
+
+  const classRegex =
+    /^[A-Z]{2,6}\d{3,6}[A-Z]?\s*-\s*\d+\s+.+/;
+
+
+  const gradeRegex =
+    /Student Grades\s+([\d.]+)%/;
+
+
+  const updatedRegex =
+    /Last Updated:\s*([\d/]+)/;
+
 
   const classes = [];
+
   let current = null;
 
+
   for (const line of lines) {
-    if (classRegex.test(line)) {
+
+    if (
+      classRegex.test(line)
+    ) {
+
       if (current) {
         classes.push(current);
       }
 
+
       current = {
+
         className: line,
+
         grade: null,
+
         lastUpdated: null
+
       };
 
+
+      continue;
+
+    }
+
+
+    if (!current) {
       continue;
     }
 
-    if (!current) continue;
 
-    const gradeMatch = line.match(gradeRegex);
+    const gradeMatch =
+      line.match(gradeRegex);
+
 
     if (gradeMatch) {
-      current.grade = `${gradeMatch[1]}%`;
+
+      current.grade =
+        `${gradeMatch[1]}%`;
+
       continue;
+
     }
 
-    const updatedMatch = line.match(updatedRegex);
+
+    const updatedMatch =
+      line.match(updatedRegex);
+
 
     if (updatedMatch) {
-      current.lastUpdated = updatedMatch[1];
+
+      current.lastUpdated =
+        updatedMatch[1];
+
     }
+
   }
+
 
   if (current) {
     classes.push(current);
   }
 
+
   return classes;
+
 }
 
+
+/*
+ * Find Chrome on Mac for local testing.
+ */
 function findLocalChrome() {
+
   const chromePaths = [
+
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+
     '/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta',
+
     '/Applications/Chromium.app/Contents/MacOS/Chromium'
+
   ];
 
-  return chromePaths.find(filePath =>
-    fs.existsSync(filePath)
+
+  return chromePaths.find(
+    filePath =>
+      fs.existsSync(filePath)
   );
+
 }
 
+
+/*
+ * Launch Puppeteer.
+ */
 async function launchBrowser() {
+
   const puppeteerModule =
     await import('puppeteer-core');
+
 
   const puppeteer =
     puppeteerModule.default;
 
-  if (require.main === module) {
+
+  /*
+   * When running:
+   *
+   * npm start
+   *
+   * require.main === module
+   *
+   * so we use Chrome installed on the Mac.
+   */
+  if (
+    require.main === module
+  ) {
+
     const chromePath =
       findLocalChrome();
 
+
     if (!chromePath) {
+
       throw new Error(
         'Google Chrome could not be found on this Mac.'
       );
+
     }
+
 
     console.log(
       'Running in LOCAL mode.'
     );
 
+
     console.log(
-      'Using Chrome:'
+      'Using Chrome:',
+      chromePath
     );
 
-    console.log(chromePath);
 
     return puppeteer.launch({
-      executablePath: chromePath,
+
+      executablePath:
+        chromePath,
+
       headless: true,
+
       args: [
+
         '--no-sandbox',
+
         '--disable-setuid-sandbox',
+
         '--disable-dev-shm-usage',
+
         '--disable-gpu',
+
         '--no-first-run',
+
         '--no-zygote'
+
       ]
+
     });
+
   }
 
+
+  /*
+   * Vercel mode.
+   */
   const chromiumModule =
     await import(
       '@sparticuz/chromium-min'
     );
 
+
   const chromium =
     chromiumModule.default;
+
 
   console.log(
     'Running in VERCEL mode.'
   );
 
+
   console.log(
     'Preparing Sparticuz Chromium...'
   );
+
 
   const chromiumDirectory =
     path.join(
@@ -260,230 +658,382 @@ async function launchBrowser() {
       'public'
     );
 
+
   const requiredFiles = [
+
     'chromium.br',
+
     'fonts.tar.br',
+
     'swiftshader.tar.br',
+
     'al2023.tar.br'
+
   ];
 
-  for (const file of requiredFiles) {
+
+  for (
+    const file of requiredFiles
+  ) {
+
     const filePath =
       path.join(
         chromiumDirectory,
         file
       );
 
-    if (!fs.existsSync(filePath)) {
+
+    if (
+      !fs.existsSync(filePath)
+    ) {
+
       throw new Error(
         `Chromium file not found: ${filePath}`
       );
+
     }
+
 
     console.log(
       `Chromium file found: ${file}`
     );
+
   }
+
 
   console.log(
     'All Chromium files found successfully.'
   );
+
 
   const executablePath =
     await chromium.executablePath(
       chromiumDirectory
     );
 
+
   console.log(
     'Chromium executable:',
     executablePath
   );
 
+
   return puppeteer.launch({
+
     args: [
+
       ...chromium.args,
+
       '--no-sandbox',
+
       '--disable-setuid-sandbox',
+
       '--disable-dev-shm-usage',
+
       '--disable-gpu',
+
       '--no-first-run',
+
       '--no-zygote'
+
     ],
+
     defaultViewport:
       chromium.defaultViewport,
+
     executablePath,
+
     headless:
       chromium.headless
+
   });
+
 }
 
-app.post('/api/grades', async (req, res) => {
-  const { username, password } =
-    req.body;
 
-  if (!username || !password) {
+/*
+ * HAC grade login/scraper.
+ */
+app.post('/api/grades', async (req, res) => {
+
+  const {
+    username,
+    password
+  } = req.body;
+
+
+  if (
+    !username ||
+    !password
+  ) {
+
     return res.status(400).json({
+
       error:
         'Username and password are required.'
+
     });
+
   }
+
 
   let browser = null;
 
+
   try {
+
     console.log('');
+
     console.log(
       '========================================'
     );
+
     console.log(
       'Starting HAC grade check...'
     );
+
     console.log(
       '========================================'
     );
+
 
     console.log(
       '1. Launching browser...'
     );
 
+
     browser =
       await launchBrowser();
+
 
     console.log(
       '2. Browser launched successfully.'
     );
 
+
     const page =
       await browser.newPage();
 
+
     await page.setViewport({
+
       width: 1440,
+
       height: 900
+
     });
+
 
     const loginUrl =
       'https://hac.friscoisd.org/HomeAccess/Account/LogOn?ReturnUrl=%2FHomeAccess%2FClasses%2FClasswork';
+
 
     console.log(
       '3. Loading HAC...'
     );
 
+
     await page.goto(
+
       loginUrl,
+
       {
-        waitUntil: 'networkidle2',
-        timeout: 30000
+
+        waitUntil:
+          'networkidle2',
+
+        timeout:
+          30000
+
       }
+
     );
+
 
     console.log(
       '4. HAC login page loaded.'
     );
 
+
     console.log(
       '5. Waiting for login fields...'
     );
 
-    await page.waitForSelector(
-      '#LogOnDetails_UserName',
-      {
-        visible: true,
-        timeout: 15000
-      }
-    );
 
     await page.waitForSelector(
-      '#LogOnDetails_Password',
+
+      '#LogOnDetails_UserName',
+
       {
+
         visible: true,
-        timeout: 15000
+
+        timeout:
+          15000
+
       }
+
     );
+
+
+    await page.waitForSelector(
+
+      '#LogOnDetails_Password',
+
+      {
+
+        visible: true,
+
+        timeout:
+          15000
+
+      }
+
+    );
+
 
     console.log(
       '6. Entering credentials...'
     );
 
-    await page.type(
-      '#LogOnDetails_UserName',
-      username,
-      {
-        delay: 10
-      }
-    );
 
     await page.type(
-      '#LogOnDetails_Password',
-      password,
+
+      '#LogOnDetails_UserName',
+
+      username,
+
       {
+
         delay: 10
+
       }
+
     );
+
+
+    await page.type(
+
+      '#LogOnDetails_Password',
+
+      password,
+
+      {
+
+        delay: 10
+
+      }
+
+    );
+
 
     console.log(
       '7. Submitting HAC login...'
     );
 
+
     await Promise.all([
+
       page.click(
         'button[type="submit"], input[type="submit"]'
       ),
 
       page.waitForNavigation({
-        waitUntil: 'networkidle2',
-        timeout: 30000
+
+        waitUntil:
+          'networkidle2',
+
+        timeout:
+          30000
+
       }).catch(() => null)
+
     ]);
+
 
     console.log(
       '8. Current HAC URL:',
       page.url()
     );
 
+
+    /*
+     * HAC login failed.
+     */
     if (
       page.url().includes(
         '/Account/LogOn'
       )
     ) {
+
       console.log(
         'HAC redirected back to the login page.'
       );
 
+
       const diagnostic =
         await page.evaluate(() => {
+
           const bodyText =
             document.body?.innerText || '';
+
 
           const title =
             document.title || '';
 
+
           const errorElements = [
+
             ...document.querySelectorAll(
+
               '.validation-summary-errors, .field-validation-error, .error, .alert, [role="alert"]'
+
             )
+
           ];
+
 
           const errors =
             errorElements
+
               .map(element =>
                 element.innerText?.trim()
               )
+
               .filter(Boolean);
 
+
           return {
+
             title,
+
             errors,
+
             bodyPreview:
+
               bodyText
-                .replace(/\s+/g, ' ')
+
+                .replace(
+                  /\s+/g,
+                  ' '
+                )
+
                 .trim()
-                .slice(0, 1500)
+
+                .slice(
+                  0,
+                  1500
+                )
+
           };
+
         });
+
 
       console.log(
         'HAC diagnostic information:'
       );
+
 
       console.log(
         JSON.stringify(
@@ -493,140 +1043,244 @@ app.post('/api/grades', async (req, res) => {
         )
       );
 
+
       return res.status(401).json({
+
         error:
           'HAC login was not successful.',
+
         diagnostic
+
       });
+
     }
+
 
     console.log(
       '9. HAC login successful.'
     );
 
-    await new Promise(resolve => {
-      setTimeout(resolve, 3000);
-    });
+
+    await new Promise(
+      resolve =>
+        setTimeout(
+          resolve,
+          3000
+        )
+    );
+
 
     console.log(
       '10. Looking for Classwork iframe...'
     );
+
 
     const iframeElement =
       await page.$(
         '#sg-legacy-iframe'
       );
 
+
     if (!iframeElement) {
+
       return res.status(500).json({
+
         error:
           'The HAC Classwork iframe could not be found.'
+
       });
+
     }
+
 
     const frame =
       await iframeElement.contentFrame();
 
+
     if (!frame) {
+
       return res.status(500).json({
+
         error:
           'Could not access the Classwork iframe contents.'
+
       });
+
     }
+
 
     console.log(
       '11. Classwork iframe found.'
     );
 
-    await new Promise(resolve => {
-      setTimeout(resolve, 5000);
-    });
+
+    await new Promise(
+      resolve =>
+        setTimeout(
+          resolve,
+          5000
+        )
+    );
+
 
     console.log(
       '12. Reading grade information...'
     );
 
+
     const bodyText =
       await frame.evaluate(() => {
+
         return document.body.innerText;
+
       });
+
 
     const classes =
       parseGrades(bodyText);
+
 
     console.log(
       `13. Parsed ${classes.length} classes.`
     );
 
+
     console.log(
       '14. HAC grade check completed.'
     );
 
+
+    /*
+     * Create a random 32-byte session ID.
+     *
+     * This is NOT the HAC password.
+     */
     const sessionId =
-      crypto.randomBytes(32).toString('hex');
+      crypto
+        .randomBytes(32)
+        .toString('hex');
+
+
+    const now =
+      new Date().toISOString();
+
 
     const sessionData = {
+
       username,
+
       classes,
+
       createdAt:
-        new Date().toISOString(),
+        now,
+
       lastSeen:
-        new Date().toISOString()
+        now
+
     };
 
+
+    /*
+     * Save session to Redis.
+     */
     await redis.set(
+
       `hac:session:${sessionId}`,
+
       JSON.stringify(sessionData),
+
       {
-        ex: SESSION_TTL
+
+        ex:
+          SESSION_TTL
+
       }
+
     );
+
 
     console.log(
-      '15. Device session saved.'
+      '15. Device session saved to Redis.'
     );
 
+
+    /*
+     * Return the session ID to the browser.
+     */
     return res.json({
+
       classes,
+
       sessionId,
-      remembered: true
+
+      remembered:
+        true
+
     });
 
+
   } catch (error) {
+
     console.error('');
+
     console.error(
       '========================================'
     );
+
     console.error(
       'HAC scrape error'
     );
+
     console.error(
       '========================================'
     );
+
     console.error(error);
 
+
     return res.status(500).json({
+
       error:
         'Failed to communicate with HAC.',
+
       details:
         error.message
+
     });
 
+
   } finally {
+
     if (browser) {
-      await browser.close()
+
+      await browser
+        .close()
         .catch(() => {});
+
     }
+
   }
+
 });
 
-if (require.main === module) {
+
+/*
+ * Start local server.
+ */
+if (
+  require.main === module
+) {
+
   const PORT =
     process.env.PORT || 3000;
 
+
   app.listen(
+
     PORT,
+
     () => {
+
       console.log(
         '========================================'
       );
@@ -648,6 +1302,16 @@ if (require.main === module) {
       console.log('');
 
       console.log(
+        'Redis test:'
+      );
+
+      console.log(
+        `http://localhost:${PORT}/api/redis-test`
+      );
+
+      console.log('');
+
+      console.log(
         'Open that address in your browser.'
       );
 
@@ -656,8 +1320,12 @@ if (require.main === module) {
       );
 
       console.log('');
+
     }
+
   );
+
 }
+
 
 module.exports = app;
