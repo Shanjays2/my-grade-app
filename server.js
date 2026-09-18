@@ -42,10 +42,26 @@ app.use(cors({
         return callback(null, true);
       }
 
+      // Any of your own Vercel domains (production, git-branch, or
+      // per-deployment preview URLs all count as separate origins)
+      if (
+        hostname.endsWith('.vercel.app')
+      ) {
+        return callback(null, true);
+      }
+
       // Google Sites
       if (
         hostname === 'sites.google.com' ||
         hostname.endsWith('.sites.google.com')
+      ) {
+        return callback(null, true);
+      }
+
+      // Google Sites "Embed Code" widgets actually run inside a sandboxed
+      // iframe on this domain (not sites.google.com itself)
+      if (
+        hostname.endsWith('.googleusercontent.com')
       ) {
         return callback(null, true);
       }
@@ -1386,4 +1402,3 @@ if (
 
 
 module.exports = app;
-
