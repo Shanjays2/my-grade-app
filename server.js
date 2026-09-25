@@ -24,7 +24,6 @@ app.use(
         origin || 'none'
       );
 
-      // Allow requests without an Origin header
       if (!origin) {
         return callback(null, true);
       }
@@ -41,7 +40,7 @@ app.use(
           return callback(null, true);
         }
 
-        // Vercel production / preview domains
+        // Vercel
         if (
           hostname.endsWith('.vercel.app')
         ) {
@@ -222,14 +221,6 @@ app.get('/api/cookie-test', (req, res) => {
         'Path=/'
       ];
 
-      /*
-       * Localhost:
-       * Secure is OFF because localhost uses HTTP.
-       *
-       * Vercel:
-       * Secure is ON because Vercel uses HTTPS.
-       */
-
       if (isProduction) {
         cookieParts.push('Secure');
         cookieParts.push('SameSite=None');
@@ -325,10 +316,6 @@ function getSessionIdFromCookie(req) {
     const sessionId =
       decodeURIComponent(match[1]);
 
-    /*
-     * Session IDs are 64 hexadecimal characters.
-     */
-
     if (
       !/^[a-f0-9]{64}$/i.test(sessionId)
     ) {
@@ -360,22 +347,10 @@ function setSessionCookie(res, sessionId) {
     'HttpOnly'
   ];
 
-  /*
-   * Vercel:
-   * HTTPS + Google Sites iframe
-   */
-
   if (isProduction) {
     cookieParts.push('Secure');
     cookieParts.push('SameSite=None');
-
   } else {
-
-    /*
-     * Localhost:
-     * HTTP is allowed.
-     */
-
     cookieParts.push('SameSite=Lax');
   }
 
@@ -424,6 +399,26 @@ CHECK REMEMBERED HAC SESSION
 */
 
 app.get('/api/session', async (req, res) => {
+
+  /*
+  IMPORTANT:
+  Prevent browsers, Google Sites, Vercel, and proxies
+  from caching this endpoint.
+
+  This fixes the 304 responses we were seeing.
+  */
+
+  res.set({
+    'Cache-Control':
+      'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    'Pragma':
+      'no-cache',
+    'Expires':
+      '0',
+    'Surrogate-Control':
+      'no-store'
+  });
+
   try {
     console.log('');
     console.log(
@@ -439,8 +434,8 @@ app.get('/api/session', async (req, res) => {
     );
 
     /*
-     * No cookie.
-     */
+    * No cookie.
+    */
 
     if (!sessionId) {
       console.log(
@@ -451,15 +446,15 @@ app.get('/api/session', async (req, res) => {
         '=================================='
       );
 
-      return res.json({
+      return res.status(200).json({
         authenticated: false,
         remembered: false
       });
     }
 
     /*
-     * Find session in Redis.
-     */
+    * Find session in Redis.
+    */
 
     const sessionKey =
       `hac:session:${sessionId}`;
@@ -477,8 +472,8 @@ app.get('/api/session', async (req, res) => {
     );
 
     /*
-     * Session expired/deleted.
-     */
+    * Session expired/deleted.
+    */
 
     if (!sessionData) {
       console.log(
@@ -495,15 +490,15 @@ app.get('/api/session', async (req, res) => {
         '=================================='
       );
 
-      return res.json({
+      return res.status(200).json({
         authenticated: false,
         remembered: false
       });
     }
 
     /*
-     * Redis may return an object or JSON string.
-     */
+    * Redis may return an object or JSON string.
+    */
 
     let session;
 
@@ -536,15 +531,15 @@ app.get('/api/session', async (req, res) => {
     }
 
     /*
-     * Update lastSeen.
-     */
+    * Update lastSeen.
+    */
 
     session.lastSeen =
       new Date().toISOString();
 
     /*
-     * Refresh Redis expiration.
-     */
+    * Refresh Redis expiration.
+    */
 
     await redis.set(
       sessionKey,
@@ -555,8 +550,8 @@ app.get('/api/session', async (req, res) => {
     );
 
     /*
-     * Refresh browser cookie.
-     */
+    * Refresh browser cookie.
+    */
 
     setSessionCookie(
       res,
@@ -575,7 +570,7 @@ app.get('/api/session', async (req, res) => {
       '=================================='
     );
 
-    return res.json({
+    return res.status(200).json({
       authenticated: true,
       remembered: true,
 
@@ -634,10 +629,6 @@ app.post('/api/logout', async (req, res) => {
       );
     }
 
-    /*
-     * Always clear browser cookie.
-     */
-
     clearSessionCookie(res);
 
     console.log(
@@ -692,10 +683,6 @@ function parseGrades(bodyText) {
 
   for (const line of lines) {
 
-    /*
-     * New class detected.
-     */
-
     if (
       classRegex.test(line)
     ) {
@@ -716,10 +703,6 @@ function parseGrades(bodyText) {
       continue;
     }
 
-    /*
-     * Grade.
-     */
-
     const gradeMatch =
       line.match(gradeRegex);
 
@@ -729,10 +712,6 @@ function parseGrades(bodyText) {
 
       continue;
     }
-
-    /*
-     * Last updated.
-     */
 
     const updatedMatch =
       line.match(updatedRegex);
@@ -787,8 +766,8 @@ async function launchBrowser() {
     puppeteerModule.default;
 
   /*
-   * LOCAL MODE
-   */
+  * LOCAL MODE
+  */
 
   if (!process.env.VERCEL) {
     const chromePath =
@@ -832,8 +811,8 @@ async function launchBrowser() {
   }
 
   /*
-   * VERCEL MODE
-   */
+  * VERCEL MODE
+  */
 
   const chromiumModule =
     await import(
@@ -960,8 +939,8 @@ app.post('/api/grades', async (req, res) => {
     );
 
     /*
-     * Launch browser.
-     */
+    * Launch browser.
+    */
 
     console.log(
       '1. Launching browser...'
@@ -983,8 +962,8 @@ app.post('/api/grades', async (req, res) => {
     });
 
     /*
-     * HAC login page.
-     */
+    * HAC login page.
+    */
 
     const loginUrl =
       'https://hac.friscoisd.org/HomeAccess/Account/LogOn?ReturnUrl=%2FHomeAccess%2FClasses%2FClasswork';
@@ -1009,8 +988,8 @@ app.post('/api/grades', async (req, res) => {
     );
 
     /*
-     * Login fields.
-     */
+    * Login fields.
+    */
 
     console.log(
       '5. Waiting for login fields...'
@@ -1076,8 +1055,8 @@ app.post('/api/grades', async (req, res) => {
     );
 
     /*
-     * HAC login failed.
-     */
+    * HAC login failed.
+    */
 
     if (
       page.url().includes(
@@ -1154,8 +1133,8 @@ app.post('/api/grades', async (req, res) => {
     );
 
     /*
-     * Give HAC time to finish loading.
-     */
+    * Give HAC time to finish loading.
+    */
 
     await new Promise(
       resolve =>
@@ -1196,8 +1175,8 @@ app.post('/api/grades', async (req, res) => {
     );
 
     /*
-     * Give iframe time to load.
-     */
+    * Give iframe time to load.
+    */
 
     await new Promise(
       resolve =>
@@ -1228,8 +1207,8 @@ app.post('/api/grades', async (req, res) => {
     );
 
     /*
-     * Make sure grades were found.
-     */
+    * Make sure grades were found.
+    */
 
     if (
       classes.length === 0
@@ -1245,10 +1224,10 @@ app.post('/api/grades', async (req, res) => {
     }
 
     /*
-     * ========================================================
-     * CREATE RANDOM SESSION ID
-     * ========================================================
-     */
+    ========================================================
+    CREATE RANDOM SESSION ID
+    ========================================================
+    */
 
     const sessionId =
       crypto
@@ -1259,10 +1238,10 @@ app.post('/api/grades', async (req, res) => {
       new Date().toISOString();
 
     /*
-     * ========================================================
-     * SAVE SESSION DATA
-     * ========================================================
-     */
+    ========================================================
+    SAVE SESSION DATA
+    ========================================================
+    */
 
     const sessionData = {
       username,
@@ -1275,10 +1254,6 @@ app.post('/api/grades', async (req, res) => {
       lastSeen:
         now
     };
-
-    /*
-     * Save session to Redis.
-     */
 
     await redis.set(
       `hac:session:${sessionId}`,
@@ -1298,10 +1273,10 @@ app.post('/api/grades', async (req, res) => {
     );
 
     /*
-     * ========================================================
-     * SAVE SESSION IN BROWSER COOKIE
-     * ========================================================
-     */
+    ========================================================
+    SAVE SESSION IN BROWSER COOKIE
+    ========================================================
+    */
 
     setSessionCookie(
       res,
@@ -1323,10 +1298,10 @@ app.post('/api/grades', async (req, res) => {
     );
 
     /*
-     * ========================================================
-     * RETURN GRADES
-     * ========================================================
-     */
+    ========================================================
+    RETURN GRADES
+    ========================================================
+    */
 
     return res.json({
       classes,
