@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>Cookie Test</title>
+  <title>HAC Grade Viewer</title>
 
   <style>
     * {
@@ -14,59 +14,140 @@
 
     body {
       margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      color: #111;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7fb;
+      color: #111827;
+    }
+
+    .container {
+      max-width: 850px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+
+    .header {
+      margin-bottom: 25px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 32px;
+    }
+
+    .header p {
+      margin-top: 6px;
+      color: #6b7280;
+    }
+
+    .notification {
+      display: none;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      border-radius: 12px;
+      background: #e8f7ee;
+      color: #176b3a;
+      border: 1px solid #b9e5c9;
+      font-weight: 600;
     }
 
     .card {
-      width: min(90%, 500px);
-      padding: 30px;
       background: white;
-      border-radius: 18px;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-      text-align: center;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.06);
+      margin-bottom: 20px;
     }
 
-    h1 {
-      margin-top: 0;
-      font-size: 28px;
+    .login-card {
+      max-width: 500px;
     }
 
-    p {
-      color: #555;
+    label {
+      display: block;
+      margin-top: 14px;
+      margin-bottom: 6px;
+      font-weight: 600;
     }
 
-    .result {
-      margin-top: 25px;
-      padding: 18px;
-      border-radius: 12px;
-      background: #f0f0f0;
-      text-align: left;
-      word-break: break-word;
-    }
-
-    .label {
-      font-weight: bold;
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      font-size: 16px;
     }
 
     button {
-      margin-top: 20px;
-      padding: 12px 20px;
+      width: 100%;
+      margin-top: 18px;
+      padding: 13px;
       border: none;
       border-radius: 10px;
-      background: #111;
+      background: #2563eb;
       color: white;
       font-size: 16px;
+      font-weight: 600;
       cursor: pointer;
     }
 
-    button:hover {
-      opacity: 0.85;
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .secondary {
+      background: #6b7280;
+    }
+
+    .status {
+      margin-top: 15px;
+      color: #6b7280;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .grades {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grade {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      background: #fafafa;
+    }
+
+    .class-name {
+      font-weight: 600;
+      max-width: 75%;
+    }
+
+    .grade-number {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .logout {
+      width: auto;
+      margin: 0;
+      padding: 9px 14px;
+      background: #ef4444;
+      font-size: 14px;
     }
   </style>
 
@@ -74,121 +155,433 @@
 
 <body>
 
-  <div class="card">
+  <div class="container">
 
 ```
-<h1>🍪 Cookie Test</h1>
+<div class="header">
+  <h1>HAC Grade Viewer</h1>
+  <p>View your current Home Access Center grades.</p>
+</div>
 
-<p>
-  This page checks whether your browser can keep
-  the same cookie after refreshing.
-</p>
+<!-- Cookie notification -->
+<div id="notification" class="notification"></div>
 
-<div class="result">
+<!-- Login -->
+<div id="loginCard" class="card login-card">
 
-  <div>
-    <span class="label">Status:</span>
-    <span id="status">Testing...</span>
-  </div>
+  <h2>Sign in to HAC</h2>
 
-  <br>
+  <p>
+    Enter your HAC username and password to load your grades.
+  </p>
 
-  <div>
-    <span class="label">Cookie ID:</span>
-    <span id="cookieId">Checking...</span>
-  </div>
+  <form id="loginForm">
+
+    <label for="username">Username</label>
+    <input
+      id="username"
+      type="text"
+      autocomplete="username"
+      required
+    >
+
+    <label for="password">Password</label>
+    <input
+      id="password"
+      type="password"
+      autocomplete="current-password"
+      required
+    >
+
+    <button id="loginButton" type="submit">
+      Load My Grades
+    </button>
+
+  </form>
+
+  <div id="loginStatus" class="status"></div>
 
 </div>
 
-<button onclick="testCookie()">
-  Test Again
-</button>
+<!-- Grades -->
+<div id="gradesCard" class="card hidden">
+
+  <div class="top-row">
+    <div>
+      <h2 id="welcomeText">My Grades</h2>
+      <p id="lastSeenText"></p>
+    </div>
+
+    <button
+      id="logoutButton"
+      class="logout"
+      type="button"
+    >
+      Log Out
+    </button>
+  </div>
+
+  <div id="grades" class="grades"></div>
+
+</div>
 ```
 
   </div>
 
-  <script>
+<script>
 
-    async function testCookie() {
+  const loginCard = document.getElementById("loginCard");
+  const gradesCard = document.getElementById("gradesCard");
 
-      const status =
-        document.getElementById('status');
+  const notification = document.getElementById("notification");
 
-      const cookieId =
-        document.getElementById('cookieId');
+  const loginForm = document.getElementById("loginForm");
+  const loginButton = document.getElementById("loginButton");
+  const loginStatus = document.getElementById("loginStatus");
+
+  const gradesContainer = document.getElementById("grades");
+
+  const welcomeText = document.getElementById("welcomeText");
+  const lastSeenText = document.getElementById("lastSeenText");
+
+  const logoutButton = document.getElementById("logoutButton");
 
 
-      status.textContent =
-        'Testing...';
+  /*
+   * Show notification
+   */
 
-      cookieId.textContent =
-        'Checking...';
+  function showNotification(message) {
+
+    notification.textContent = message;
+    notification.style.display = "block";
+
+  }
+
+
+  /*
+   * Hide notification
+   */
+
+  function hideNotification() {
+
+    notification.style.display = "none";
+
+  }
+
+
+  /*
+   * Display grades
+   */
+
+  function displayGrades(classes, username) {
+
+    if (!classes || classes.length === 0) {
+
+      gradesContainer.innerHTML =
+        "<p>No grades were returned.</p>";
+
+      return;
+
+    }
+
+    gradesContainer.innerHTML = "";
+
+    classes.forEach(course => {
+
+      const gradeBox = document.createElement("div");
+
+      gradeBox.className = "grade";
+
+      const className =
+        document.createElement("div");
+
+      className.className = "class-name";
+
+      className.textContent =
+        course.className || "Unknown Class";
+
+      const grade =
+        document.createElement("div");
+
+      grade.className = "grade-number";
+
+      grade.textContent =
+        course.grade || "N/A";
+
+      gradeBox.appendChild(className);
+      gradeBox.appendChild(grade);
+
+      gradesContainer.appendChild(gradeBox);
+
+    });
+
+    if (username) {
+
+      welcomeText.textContent =
+        `Welcome, ${username}`;
+
+    } else {
+
+      welcomeText.textContent =
+        "My Grades";
+
+    }
+
+    loginCard.classList.add("hidden");
+    gradesCard.classList.remove("hidden");
+
+  }
+
+
+  /*
+   * Check for remembered HAC session
+   */
+
+  async function checkRememberedLogin() {
+
+    try {
+
+      loginStatus.textContent =
+        "Checking for a saved login...";
+
+      const response =
+        await fetch("/api/session", {
+
+          method: "GET",
+
+          credentials: "include"
+
+        });
+
+      const data =
+        await response.json();
+
+      console.log("Session check:", data);
+
+
+      /*
+       * Saved cookie + Redis session found
+       */
+
+      if (
+        data.authenticated === true &&
+        data.remembered === true
+      ) {
+
+        showNotification(
+          "✓ Saved login detected — loading your grades..."
+        );
+
+        displayGrades(
+          data.classes || [],
+          data.username
+        );
+
+        if (data.lastSeen) {
+
+          lastSeenText.textContent =
+            "Saved session restored.";
+
+        }
+
+        return;
+
+      }
+
+
+      /*
+       * No saved login
+       */
+
+      hideNotification();
+
+      loginStatus.textContent =
+        "";
+
+      loginCard.classList.remove("hidden");
+      gradesCard.classList.add("hidden");
+
+    } catch (error) {
+
+      console.error(
+        "Session check failed:",
+        error
+      );
+
+      loginStatus.textContent =
+        "Could not check your saved login.";
+
+    }
+
+  }
+
+
+  /*
+   * Normal HAC login
+   */
+
+  loginForm.addEventListener(
+    "submit",
+    async event => {
+
+      event.preventDefault();
+
+      const username =
+        document.getElementById("username").value.trim();
+
+      const password =
+        document.getElementById("password").value;
+
+      if (!username || !password) {
+
+        loginStatus.textContent =
+          "Please enter your username and password.";
+
+        return;
+
+      }
+
+
+      loginButton.disabled = true;
+
+      loginButton.textContent =
+        "Loading grades...";
+
+      loginStatus.textContent =
+        "Signing into HAC and reading your grades...";
 
 
       try {
 
         const response =
-          await fetch(
-            '/api/cookie-test',
-            {
-              method: 'GET',
+          await fetch("/api/grades", {
 
-              credentials: 'include',
+            method: "POST",
 
-              cache: 'no-store'
-            }
-          );
+            credentials: "include",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+              username,
+              password
+            })
+
+          });
 
 
         const data =
           await response.json();
 
 
+        console.log(
+          "Grade response:",
+          data
+        );
+
+
         if (!response.ok) {
 
           throw new Error(
             data.error ||
-            `HTTP ${response.status}`
+            "HAC login failed."
           );
 
         }
 
 
-        if (data.existing) {
+        /*
+         * /api/grades returns the classes.
+         * The server also creates the hac_session cookie.
+         */
 
-          status.textContent =
-            'COOKIE FOUND ✅';
+        showNotification(
+          "✓ Login successful — your grades are loaded."
+        );
 
-        } else {
+        displayGrades(
+          data.classes || [],
+          username
+        );
 
-          status.textContent =
-            'NEW COOKIE CREATED 🍪';
-
-        }
-
-
-        cookieId.textContent =
-          data.cookieId || 'None';
-
+        lastSeenText.textContent =
+          "Grades loaded from HAC.";
 
       } catch (error) {
 
-        console.error(error);
+        console.error(
+          "Grade request failed:",
+          error
+        );
 
-        status.textContent =
-          'ERROR ❌';
+        loginStatus.textContent =
+          error.message ||
+          "Something went wrong while loading your grades.";
 
-        cookieId.textContent =
-          error.message;
+      } finally {
+
+        loginButton.disabled = false;
+
+        loginButton.textContent =
+          "Load My Grades";
 
       }
 
     }
+  );
 
 
-    testCookie();
+  /*
+   * Logout
+   */
 
-  </script>
+  logoutButton.addEventListener(
+    "click",
+    async () => {
+
+      try {
+
+        await fetch("/api/logout", {
+
+          method: "POST",
+
+          credentials: "include"
+
+        });
+
+      } catch (error) {
+
+        console.error(
+          "Logout error:",
+          error
+        );
+
+      }
+
+      gradesCard.classList.add("hidden");
+      loginCard.classList.remove("hidden");
+
+      hideNotification();
+
+      loginForm.reset();
+
+      loginStatus.textContent =
+        "You have been logged out.";
+
+    }
+  );
+
+
+  /*
+   * Start
+   */
+
+  checkRememberedLogin();
+
+</script>
 
 </body>
 </html>
