@@ -350,6 +350,7 @@ function setSessionCookie(res, sessionId) {
   if (isProduction) {
     cookieParts.push('Secure');
     cookieParts.push('SameSite=None');
+    cookieParts.push('Partitioned');
   } else {
     cookieParts.push('SameSite=Lax');
   }
