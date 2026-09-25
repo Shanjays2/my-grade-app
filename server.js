@@ -397,7 +397,23 @@ function clearSessionCookie(res) {
 CHECK REMEMBERED HAC SESSION
 ============================================================
 */
+app.get('/api/debug-cookie', (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
 
+  const cookieHeader = req.headers.cookie || '';
+
+  res.json({
+    cookieHeaderPresent: !!cookieHeader,
+    cookieHeader: cookieHeader
+      ? cookieHeader.replace(/hac_session=[^;]+/, 'hac_session=HIDDEN')
+      : null,
+    hacSessionPresent: /(?:^|;\s*)hac_session=/.test(cookieHeader)
+  });
+});
 app.get('/api/session', async (req, res) => {
 
   /*
