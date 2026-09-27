@@ -1366,7 +1366,18 @@ app.post('/api/grades', async (req, res) => {
   }
 });
 
+/*
+============================================================
+VERCEL TEST ENDPOINT
+============================================================
+*/
 
+app.get('/api/test', (req, res) => {
+  res.json({
+    success: true,
+    message: "Vercel received the request!"
+  });
+});
 /*
 ============================================================
 START LOCAL SERVER
@@ -1378,12 +1389,7 @@ if (
 ) {
   const PORT =
     process.env.PORT || 3000;
-  app.get('/api/test', (req, res) => {
-  res.json({
-    success: true,
-    message: "Vercel received the request!"
-  });
-});
+  
   app.listen(
     PORT,
     () => {
