@@ -1375,7 +1375,8 @@ VERCEL TEST ENDPOINT
 app.get('/api/test', (req, res) => {
   res.json({
     success: true,
-    message: "Vercel received the request!"
+    message: "Vercel received the request!",
+    received: req.body
   });
 });
 /*
