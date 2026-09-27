@@ -300,6 +300,28 @@ GET SESSION ID FROM COOKIE
 */
 
 function getSessionIdFromCookie(req) {
+  /*
+  First check the session ID header.
+  This is used by the Google Apps Script bridge.
+  */
+
+  const headerSessionId =
+    req.headers['x-session-id'];
+
+  if (headerSessionId) {
+    if (
+      /^[a-f0-9]{64}$/i.test(
+        headerSessionId
+      )
+    ) {
+      return headerSessionId;
+    }
+  }
+
+  /*
+  Otherwise check the normal HAC cookie.
+  */
+
   const cookies =
     req.headers.cookie || '';
 
@@ -317,7 +339,9 @@ function getSessionIdFromCookie(req) {
       decodeURIComponent(match[1]);
 
     if (
-      !/^[a-f0-9]{64}$/i.test(sessionId)
+      !/^[a-f0-9]{64}$/i.test(
+        sessionId
+      )
     ) {
       return null;
     }
