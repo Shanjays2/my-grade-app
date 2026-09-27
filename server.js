@@ -1378,7 +1378,12 @@ if (
 ) {
   const PORT =
     process.env.PORT || 3000;
-
+  app.get('/api/test', (req, res) => {
+  res.json({
+    success: true,
+    message: "Vercel received the request!"
+  });
+});
   app.listen(
     PORT,
     () => {
